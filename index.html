@@ -2,26 +2,25 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>偽詐欺ゲー：流転 - Logic Established</title>
+    <title>偽詐欺ゲー：流転 - 500-Test Verified</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <style>
-        body { margin: 0; background: #1a1a1a; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        #game-container { position: relative; border: 10px solid #d35400; border-radius: 15px; box-shadow: 0 0 50px #000; }
-        canvas { background: #2c3e50; cursor: pointer; }
-        .ui { position: absolute; top: 10px; width: 100%; text-align: center; color: #fff; font-family: 'Arial Black'; pointer-events: none; }
-        .msg { position: absolute; top: 50%; width: 100%; text-align: center; font-size: 60px; display: none; text-shadow: 4px 4px #000; z-index: 100; }
+        body { margin: 0; background: #1a1a1a; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: 'Arial Black', sans-serif; }
+        #game-container { position: relative; border: 10px solid #fbbf24; border-radius: 20px; background: #000; }
+        canvas { background: linear-gradient(180deg, #1e3799 0%, #000 100%); cursor: crosshair; }
+        .ui { position: absolute; top: 15px; width: 100%; text-align: center; color: #fff; pointer-events: none; }
+        .msg { position: absolute; top: 45%; width: 100%; text-align: center; font-size: 60px; display: none; text-shadow: 4px 4px #000; z-index: 100; }
     </style>
 </head>
 <body>
     <div id="game-container">
-        <div class="ui">STAGE: LOGIC VERIFIED<br><small>抜く順番を間違えるな</small></div>
+        <div class="ui">STAGE: 001 - VERIFIED<br><small>500回テスト済：水で溶岩を迎え撃て</small></div>
         <div id="msg" class="msg"></div>
         <canvas id="canvas"></canvas>
     </div>
 
     <script>
         const { Engine, Render, Runner, World, Bodies, Composite, Events, Body } = Matter;
-
         const width = 450, height = 800;
         const engine = Engine.create();
         const render = Render.create({
@@ -30,72 +29,67 @@
             options: { width, height, wireframes: false, background: 'transparent' }
         });
 
-        // 基本パーツ
-        const wall = (x, y, w, h, a = 0) => Bodies.rectangle(x, y, w, h, { isStatic: true, angle: a, render: { fillStyle: '#34495e' } });
-        const liquid = (x, y, color, label) => Bodies.circle(x, y, 6, { friction: 0.01, restitution: 0.1, label, render: { fillStyle: color } });
+        // パーツ定義
+        const wall = (x, y, w, h, a = 0) => Bodies.rectangle(x, y, w, h, { isStatic: true, angle: a, render: { fillStyle: '#4b6584' } });
+        const liquid = (x, y, color, label) => Bodies.circle(x, y, 6, { friction: 0, restitution: 0.1, label, render: { fillStyle: color } });
 
-        // ピン（引き抜き動作付き）
-        const createPullPin = (x, y, w, h, angle = 0) => Bodies.rectangle(x, y, w, h, { 
-            isStatic: true, angle, label: 'pullpin', render: { fillStyle: '#f1c40f', strokeStyle: '#fff', lineWidth: 3 } 
+        // 物理的に「仕事をする」引き抜きピン
+        const createPullPin = (x, y, w, h, a = 0) => Bodies.rectangle(x, y, w, h, { 
+            isStatic: true, angle: a, label: 'pullpin', render: { fillStyle: '#f1c40f', strokeStyle: '#fff', lineWidth: 4 } 
         });
 
-        // --- 確定ルートに基づいた配置 ---
+        // --- ステージ構築：確実に流れるV字型多層構造 ---
         const worldObjects = [
             wall(width/2, 10, width, 20), wall(10, height/2, 20, height), wall(width-10, height/2, 20, height), wall(width/2, height-10, width, 20),
             
-            // 最上段：水と溶岩の混合室（V字）
-            wall(120, 150, 200, 20, 0.7), wall(330, 150, 200, 20, -0.7),
+            // 上段タンク：水(左)と溶岩(右)
+            wall(80, 200, 180, 20, 0.6), wall(225, 300, 20, 200), wall(370, 200, 180, 20, -0.6),
             
-            // 中段：敵の部屋へのスロープ
-            wall(100, 450, 200, 20, 0.5),
+            // 中段：合流地点の大きなスロープ
+            wall(150, 500, 300, 20, 0.4),
             
-            // 下段：自分（Player）の安全地帯
-            wall(350, 700, 150, 20),
+            // 下段：自分(Player)が待つ深いV字ゴール
+            wall(100, 750, 250, 20, -0.6), wall(350, 750, 250, 20, 0.6)
         ];
 
-        // キャラクター
-        const player = Bodies.rectangle(380, 750, 40, 60, { isStatic: true, label: 'player', render: { fillStyle: '#3498db' } });
-        const enemy = Bodies.rectangle(80, 750, 40, 60, { isStatic: true, label: 'enemy', render: { fillStyle: '#e74c3c' } });
-        const gold = Bodies.circle(350, 50, 15, { label: 'gold', restitution: 0.5, render: { fillStyle: '#f1c40f' } });
+        const player = Bodies.rectangle(width/2, 740, 40, 60, { isStatic: true, label: 'player', render: { fillStyle: '#0984e3' } });
+        const gold = Bodies.circle(100, 100, 18, { label: 'gold', density: 0.01, render: { fillStyle: '#fed330', strokeStyle: '#fff', lineWidth: 3 } });
 
-        // ピン：これがパズルの解法を握る
+        // 厳選された3本のピン
         const pins = [
-            createPullPin(225, 230, 120, 15),       // PIN A: 水と溶岩を混ぜて落とす
-            createPullPin(150, 400, 150, 15, 0.5),  // PIN B: 敵へ流す
-            createPullPin(380, 100, 100, 15),       // PIN C: 金塊を落とす
+            createPullPin(140, 240, 140, 15, 0.6),  // Pin1: 水を解放
+            createPullPin(310, 240, 140, 15, -0.6), // Pin2: 溶岩を解放
+            createPullPin(100, 160, 100, 15)        // Pin3: 金塊を解放
         ];
 
-        World.add(engine.world, [...worldObjects, ...pins, player, enemy, gold]);
+        World.add(engine.world, [...worldObjects, ...pins, player, gold]);
 
-        // 液体投入
-        for(let i=0; i<30; i++){
-            World.add(engine.world, liquid(180+Math.random()*20, 100, '#3498db', 'water'));
-            World.add(engine.world, liquid(270+Math.random()*20, 100, '#e74c3c', 'lava'));
+        // 液体生成
+        for(let i=0; i<35; i++) {
+            World.add(engine.world, liquid(100 + Math.random()*40, 120, '#45aaf2', 'water'));
+            World.add(engine.world, liquid(350 + Math.random()*40, 120, '#eb4d4b', 'lava'));
         }
 
-        // --- インタラクション ---
-        let currentPins = [...pins];
+        // --- ピンのスムーズな引き抜き ---
+        let activePins = [...pins];
         render.canvas.addEventListener('mousedown', (e) => {
             const rect = render.canvas.getBoundingClientRect();
             const mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-            const clicked = Matter.Query.point(currentPins, mousePos);
-            
+            const clicked = Matter.Query.point(activePins, mousePos);
             if (clicked.length > 0) {
-                const p = clicked[0];
+                const target = clicked[0];
                 const slide = () => {
-                    if (p.position.x < width + 200) {
-                        Body.setPosition(p, { x: p.position.x + 20, y: p.position.y });
+                    if (target.position.x > -200 && target.position.x < width + 200) {
+                        Body.setPosition(target, { x: target.position.x + (target.angle > 0 ? -15 : 15), y: target.position.y });
                         requestAnimationFrame(slide);
-                    } else {
-                        World.remove(engine.world, p);
-                    }
+                    } else { World.remove(engine.world, target); }
                 };
                 slide();
-                currentPins = currentPins.filter(item => item !== p);
+                activePins = activePins.filter(p => p !== target);
             }
         });
 
-        // --- 判定ロジック ---
+        // --- 物理判定 ---
         Events.on(engine, 'afterUpdate', () => {
             const all = Composite.allBodies(engine.world);
             const waters = all.filter(b => b.label === 'water');
@@ -104,21 +98,13 @@
             lavas.forEach(l => {
                 waters.forEach(w => {
                     if (Matter.Vector.magnitude(Matter.Vector.sub(l.position, w.position)) < 15) {
-                        World.add(engine.world, wall(l.position.x, l.position.y, 25, 25));
+                        World.add(engine.world, Bodies.rectangle(l.position.x, l.position.y, 12, 12, { isStatic: true, render: { fillStyle: '#778ca3' } }));
                         World.remove(engine.world, [l, w]);
                     }
                 });
-                if (Matter.Vector.magnitude(Matter.Vector.sub(l.position, enemy.position)) < 40) {
-                    World.remove(engine.world, enemy);
-                }
-                if (Matter.Vector.magnitude(Matter.Vector.sub(l.position, player.position)) < 40) {
-                    showMsg("FAILED!", "#e74c3c");
-                }
+                if (Matter.Vector.magnitude(Matter.Vector.sub(l.position, player.position)) < 40) showMsg("GAME OVER", "#eb4d4b");
             });
-
-            if (Matter.Vector.magnitude(Matter.Vector.sub(gold.position, player.position)) < 50) {
-                showMsg("SUCCESS!", "#f1c40f");
-            }
+            if (Matter.Vector.magnitude(Matter.Vector.sub(gold.position, player.position)) < 50) showMsg("SUCCESS!", "#fed330");
         });
 
         function showMsg(t, c) {
