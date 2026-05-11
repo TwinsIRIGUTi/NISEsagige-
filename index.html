@@ -1,1 +1,90 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>偽詐欺ゲー - Real Screw Puzzle</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        body { margin: 0; background: #222; overflow: hidden; font-family: 'Arial Black', sans-serif; }
+        #ui { position: absolute; top: 20px; width: 100%; text-align: center; pointer-events: none; }
+        .stage-text { color: #fff; font-size: 48px; -webkit-text-stroke: 2px #000; text-shadow: 4px 4px #f39c12; }
+        .btn { pointer-events: auto; background: #e74c3c; color: white; border: 4px solid #fff; padding: 10px 20px; font-size: 20px; cursor: pointer; border-radius: 10px; margin-top: 10px; }
+        canvas { display: block; margin: 0 auto; background: linear-gradient(180deg, #3498db 0%, #2980b9 100%); }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div class="stage-text">STAGE 1</div>
+        <button class="btn" onclick="location.reload()">RETRY</button>
+    </div>
 
+    <script>
+        const { Engine, Render, Runner, World, Bodies, Constraint, MouseConstraint, Mouse, Composite } = Matter;
+
+        const engine = Engine.create();
+        const render = Render.create({
+            element: document.body,
+            engine: engine,
+            options: { width: 400, height: 600, wireframes: false, background: 'transparent' }
+        });
+
+        // 詐欺ゲー風：原色の板を作成
+        function createPlate(x, y, w, h, color) {
+            return Bodies.rectangle(x, y, w, h, {
+                render: { fillStyle: color, strokeStyle: '#fff', lineWidth: 3 },
+                chamfer: { radius: 10 }
+            });
+        }
+
+        // ネジ（ピン）の描画
+        function createScrew(x, y) {
+            const screw = Bodies.circle(x, y, 15, {
+                isStatic: true,
+                render: { fillStyle: '#f1c40f', strokeStyle: '#f39c12', lineWidth: 5 }
+            });
+            screw.label = "screw";
+            return screw;
+        }
+
+        // 練習面：板1枚を2本のネジで固定
+        const plate1 = createPlate(200, 200, 250, 40, '#e67e22');
+        const screw1 = createScrew(120, 200);
+        const screw2 = createScrew(280, 200);
+
+        // ネジと板を固定するジョイント
+        const constraint1 = Constraint.create({
+            bodyA: plate1, pointB: { x: -80, y: 0 },
+            bodyB: screw1, length: 0, stiffness: 1
+        });
+        const constraint2 = Constraint.create({
+            bodyA: plate1, pointB: { x: 80, y: 0 },
+            bodyB: screw2, length: 0, stiffness: 1
+        });
+
+        // 下の方に「ストック穴」を用意
+        const stockHole = createScrew(200, 500);
+
+        World.add(engine.world, [plate1, screw1, screw2, stockHole, constraint1, constraint2]);
+
+        // クリックイベント
+        const mouse = Mouse.create(render.canvas);
+        document.addEventListener('mousedown', () => {
+            const query = Matter.Query.point(Composite.allBodies(engine.world), mouse.position);
+            const clickedScrew = query.find(b => b.label === "screw");
+
+            if (clickedScrew && clickedScrew.isStatic) {
+                // ネジを外す処理（物理制約を削除）
+                const constraints = Composite.allConstraints(engine.world);
+                constraints.forEach(c => {
+                    if (c.bodyB === clickedScrew) World.remove(engine.world, c);
+                });
+                // ネジ自体を消す（詐欺ゲー演出）
+                World.remove(engine.world, clickedScrew);
+            }
+        });
+
+        Render.run(render);
+        Runner.run(Runner.create(), engine);
+    </script>
+</body>
+</html>
