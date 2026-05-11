@@ -2,32 +2,25 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>偽詐欺ゲー：流転 - Sloped Version</title>
+    <title>偽詐欺ゲー：流転 - Professional Pin Mechanics</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <style>
-        body { margin: 0; background: #1a1a1a; overflow: hidden; font-family: 'Arial Black', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        #game-container { position: relative; border: 8px solid #444; }
-        #ui { position: absolute; top: 10px; width: 100%; text-align: center; pointer-events: none; z-index: 10; }
-        .stage-text { color: #fff; font-size: 24px; text-shadow: 2px 2px #f39c12; }
-        .msg { position: absolute; top: 40%; width: 100%; text-align: center; font-size: 60px; display: none; z-index: 100; text-shadow: 4px 4px #000; }
-        canvas { background: linear-gradient(180deg, #2c3e50 0%, #000 100%); }
+        body { margin: 0; background: #1a1a1a; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        #game-container { position: relative; border: 10px solid #fbbf24; border-radius: 20px; box-shadow: 0 0 30px #000; }
+        canvas { background: #2d3436; cursor: crosshair; }
+        .ui-text { position: absolute; top: 10px; width: 100%; text-align: center; color: gold; font-family: 'Arial Black'; font-size: 24px; text-shadow: 2px 2px #000; pointer-events: none; }
     </style>
 </head>
 <body>
     <div id="game-container">
-        <div id="ui">
-            <div class="stage-text">STAGE: SLOPED TEST</div>
-            <button style="pointer-events: auto;" onclick="location.reload()">RETRY</button>
-        </div>
-        <div id="msg" class="msg"></div>
+        <div class="ui-text">STAGE: RESEARCHED</div>
         <canvas id="canvas"></canvas>
     </div>
 
     <script>
-        const { Engine, Render, Runner, World, Bodies, Composite, Events } = Matter;
+        const { Engine, Render, Runner, World, Bodies, Composite, Events, Body } = Matter;
 
-        const width = 450;
-        const height = 800;
+        const width = 450, height = 800;
         const engine = Engine.create();
         const render = Render.create({
             canvas: document.getElementById('canvas'),
@@ -35,100 +28,81 @@
             options: { width, height, wireframes: false, background: 'transparent' }
         });
 
-        // パーツ作成
-        const createWall = (x, y, w, h, angle = 0) => Bodies.rectangle(x, y, w, h, { 
-            isStatic: true, angle, render: { fillStyle: '#7f8c8d' } 
-        });
-        
-        const createLiquid = (x, y, color, label) => Bodies.circle(x, y, 6, {
-            friction: 0.01, restitution: 0.1, density: 0.002, label, render: { fillStyle: color }
-        });
+        // --- 物理パーツ ---
+        const wall = (x, y, w, h, a = 0) => Bodies.rectangle(x, y, w, h, { isStatic: true, angle: a, render: { fillStyle: '#636e72' } });
+        const liquid = (x, y, color, label) => Bodies.circle(x, y, 7, { friction: 0, restitution: 0.2, label, render: { fillStyle: color } });
 
-        const createPin = (x, y, angle) => Bodies.rectangle(x, y, 140, 12, { 
-            isStatic: true, angle, label: 'pin', render: { fillStyle: '#f1c40f', strokeStyle: '#fff', lineWidth: 3 } 
-        });
+        // ピンを「動かせる実体」として作成
+        const createPullPin = (x, y, w, h, name) => {
+            return Bodies.rectangle(x, y, w, h, { 
+                isStatic: true, label: 'pullpin', name,
+                render: { fillStyle: '#f1c40f', strokeStyle: '#d35400', lineWidth: 4 }
+            });
+        };
 
-        // --- ステージ構築 (斜面メイン) ---
-        const walls = [
-            createWall(width/2, 10, width, 20), // 天井
-            createWall(10, height/2, 20, height), // 左壁
-            createWall(width-10, height/2, 20, height), // 右壁
-            createWall(width/2, height-10, width, 20), // 床
-
-            // V字型の貯水・貯岩タンク
-            createWall(100, 150, 200, 20, Math.PI / 6),  // 左斜め上
-            createWall(350, 150, 200, 20, -Math.PI / 6), // 右斜め上
-            
-            // 流路の斜面
-            createWall(120, 350, 300, 20, Math.PI / 10), // 中段スロープ
-            createWall(330, 500, 300, 20, -Math.PI / 10), // 下段スロープ
+        // --- レイアウト：V字タンクとスライドピン ---
+        const worldObjects = [
+            wall(width/2, 10, width, 20), wall(10, height/2, 20, height), wall(width-10, height/2, 20, height), wall(width/2, height-10, width, 20),
+            // V字構造
+            wall(100, 200, 250, 20, 0.8), wall(350, 200, 250, 20, -0.8),
+            // 下の受け皿
+            wall(width/2, 650, 200, 20)
         ];
 
-        // キャラクター
-        const player = Bodies.rectangle(380, 730, 45, 65, { isStatic: true, label: 'player', render: { fillStyle: '#3498db' } });
-        const enemy = Bodies.rectangle(80, 730, 45, 65, { isStatic: true, label: 'enemy', render: { fillStyle: '#e74c3c' } });
-        const treasure = Bodies.circle(width/2, 50, 15, { label: 'gold', render: { fillStyle: '#f1c40f', strokeStyle: '#fff', lineWidth: 2 } });
-
-        // ピン (斜面をせき止めるように配置)
+        // 仕事をするピン（スライド式）
         const pins = [
-            createPin(225, 200, 0),             // 最上部のＶ字底
-            createPin(150, 420, -Math.PI / 4),  // 中段スロープの出口
-            createPin(300, 580, Math.PI / 4),   // 下段スロープの出口
+            createPullPin(width/2, 280, 180, 15, 'main_pin'), // V字の底を塞ぐ
+            createPullPin(150, 500, 150, 15, 'trap_pin')      // 横の流路
         ];
 
-        World.add(engine.world, [...walls, player, enemy, treasure, ...pins]);
+        const player = Bodies.rectangle(width/2, 720, 50, 80, { isStatic: true, label: 'player', render: { fillStyle: '#0984e3' } });
 
-        // 液体生成 (Ｖ字の中に溜める)
-        for(let i=0; i<25; i++) {
-            World.add(engine.world, createLiquid(150 + Math.random()*20, 80, '#3498db', 'water'));
-            World.add(engine.world, createLiquid(280 + Math.random()*20, 80, '#e74c3c', 'lava'));
+        World.add(engine.world, [...worldObjects, ...pins, player]);
+
+        // 液体投入（たっぷり）
+        for(let i=0; i<40; i++) {
+            World.add(engine.world, liquid(width/2 - 30 + Math.random()*60, 100, '#e74c3c', 'lava'));
+            World.add(engine.world, liquid(width/2 - 20 + Math.random()*40, 150, '#3498db', 'water'));
         }
 
-        // --- クリックでピンを抜く ---
+        // --- インタラクション（引き抜きアニメーション） ---
+        let activePins = [...pins];
         render.canvas.addEventListener('mousedown', (e) => {
             const rect = render.canvas.getBoundingClientRect();
             const mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-            const clicked = Matter.Query.point(pins, mousePos);
+            const clicked = Matter.Query.point(activePins, mousePos);
+            
             if (clicked.length > 0) {
-                World.remove(engine.world, clicked[0]);
-                pins.splice(pins.indexOf(clicked[0]), 1);
+                const targetPin = clicked[0];
+                // 「ススッ」と右にスライドして消えるアニメーション
+                const slide = () => {
+                    if (targetPin.position.x < width + 200) {
+                        Body.setPosition(targetPin, { x: targetPin.position.x + 15, y: targetPin.position.y });
+                        requestAnimationFrame(slide);
+                    } else {
+                        World.remove(engine.world, targetPin);
+                    }
+                };
+                slide();
+                activePins = activePins.filter(p => p !== targetPin);
             }
         });
 
-        // --- 判定ロジック ---
+        // 衝突ロジック（水+溶岩=岩）
         Events.on(engine, 'afterUpdate', () => {
-            const bodies = Composite.allBodies(engine.world);
-            const waters = bodies.filter(b => b.label === 'water');
-            const lavas = bodies.filter(b => b.label === 'lava');
+            const all = Composite.allBodies(engine.world);
+            const waters = all.filter(b => b.label === 'water');
+            const lavas = all.filter(b => b.label === 'lava');
 
             lavas.forEach(l => {
-                // 水と接触 -> 岩
                 waters.forEach(w => {
                     if (Matter.Vector.magnitude(Matter.Vector.sub(l.position, w.position)) < 15) {
-                        World.add(engine.world, createWall(l.position.x, l.position.y, 20, 20));
+                        World.add(engine.world, wall(l.position.x, l.position.y, 20, 20));
                         World.remove(engine.world, [l, w]);
                     }
                 });
-                // 敵を焼く
-                if (Matter.Vector.magnitude(Matter.Vector.sub(l.position, enemy.position)) < 40) {
-                    World.remove(engine.world, enemy);
-                }
-                // 自分を焼く
-                if (Matter.Vector.magnitude(Matter.Vector.sub(l.position, player.position)) < 40) {
-                    showMsg("FAILED...", "#e74c3c");
-                }
             });
-
-            // 金塊ゲット
-            if (Matter.Vector.magnitude(Matter.Vector.sub(treasure.position, player.position)) < 50) {
-                showMsg("SUCCESS!", "#f1c40f");
-            }
         });
-
-        function showMsg(text, color) {
-            const m = document.getElementById('msg');
-            m.innerText = text; m.style.color = color; m.style.display = "block";
-        }
 
         Render.run(render);
         Runner.run(Runner.create(), engine);
