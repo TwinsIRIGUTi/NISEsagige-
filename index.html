@@ -2,18 +2,20 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>偽詐欺ゲー：流転 - Professional Pin Mechanics</title>
+    <title>偽詐欺ゲー：流転 - Logic Established</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <style>
         body { margin: 0; background: #1a1a1a; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        #game-container { position: relative; border: 10px solid #fbbf24; border-radius: 20px; box-shadow: 0 0 30px #000; }
-        canvas { background: #2d3436; cursor: crosshair; }
-        .ui-text { position: absolute; top: 10px; width: 100%; text-align: center; color: gold; font-family: 'Arial Black'; font-size: 24px; text-shadow: 2px 2px #000; pointer-events: none; }
+        #game-container { position: relative; border: 10px solid #d35400; border-radius: 15px; box-shadow: 0 0 50px #000; }
+        canvas { background: #2c3e50; cursor: pointer; }
+        .ui { position: absolute; top: 10px; width: 100%; text-align: center; color: #fff; font-family: 'Arial Black'; pointer-events: none; }
+        .msg { position: absolute; top: 50%; width: 100%; text-align: center; font-size: 60px; display: none; text-shadow: 4px 4px #000; z-index: 100; }
     </style>
 </head>
 <body>
     <div id="game-container">
-        <div class="ui-text">STAGE: RESEARCHED</div>
+        <div class="ui">STAGE: LOGIC VERIFIED<br><small>抜く順番を間違えるな</small></div>
+        <div id="msg" class="msg"></div>
         <canvas id="canvas"></canvas>
     </div>
 
@@ -28,67 +30,72 @@
             options: { width, height, wireframes: false, background: 'transparent' }
         });
 
-        // --- 物理パーツ ---
-        const wall = (x, y, w, h, a = 0) => Bodies.rectangle(x, y, w, h, { isStatic: true, angle: a, render: { fillStyle: '#636e72' } });
-        const liquid = (x, y, color, label) => Bodies.circle(x, y, 7, { friction: 0, restitution: 0.2, label, render: { fillStyle: color } });
+        // 基本パーツ
+        const wall = (x, y, w, h, a = 0) => Bodies.rectangle(x, y, w, h, { isStatic: true, angle: a, render: { fillStyle: '#34495e' } });
+        const liquid = (x, y, color, label) => Bodies.circle(x, y, 6, { friction: 0.01, restitution: 0.1, label, render: { fillStyle: color } });
 
-        // ピンを「動かせる実体」として作成
-        const createPullPin = (x, y, w, h, name) => {
-            return Bodies.rectangle(x, y, w, h, { 
-                isStatic: true, label: 'pullpin', name,
-                render: { fillStyle: '#f1c40f', strokeStyle: '#d35400', lineWidth: 4 }
-            });
-        };
+        // ピン（引き抜き動作付き）
+        const createPullPin = (x, y, w, h, angle = 0) => Bodies.rectangle(x, y, w, h, { 
+            isStatic: true, angle, label: 'pullpin', render: { fillStyle: '#f1c40f', strokeStyle: '#fff', lineWidth: 3 } 
+        });
 
-        // --- レイアウト：V字タンクとスライドピン ---
+        // --- 確定ルートに基づいた配置 ---
         const worldObjects = [
             wall(width/2, 10, width, 20), wall(10, height/2, 20, height), wall(width-10, height/2, 20, height), wall(width/2, height-10, width, 20),
-            // V字構造
-            wall(100, 200, 250, 20, 0.8), wall(350, 200, 250, 20, -0.8),
-            // 下の受け皿
-            wall(width/2, 650, 200, 20)
+            
+            // 最上段：水と溶岩の混合室（V字）
+            wall(120, 150, 200, 20, 0.7), wall(330, 150, 200, 20, -0.7),
+            
+            // 中段：敵の部屋へのスロープ
+            wall(100, 450, 200, 20, 0.5),
+            
+            // 下段：自分（Player）の安全地帯
+            wall(350, 700, 150, 20),
         ];
 
-        // 仕事をするピン（スライド式）
+        // キャラクター
+        const player = Bodies.rectangle(380, 750, 40, 60, { isStatic: true, label: 'player', render: { fillStyle: '#3498db' } });
+        const enemy = Bodies.rectangle(80, 750, 40, 60, { isStatic: true, label: 'enemy', render: { fillStyle: '#e74c3c' } });
+        const gold = Bodies.circle(350, 50, 15, { label: 'gold', restitution: 0.5, render: { fillStyle: '#f1c40f' } });
+
+        // ピン：これがパズルの解法を握る
         const pins = [
-            createPullPin(width/2, 280, 180, 15, 'main_pin'), // V字の底を塞ぐ
-            createPullPin(150, 500, 150, 15, 'trap_pin')      // 横の流路
+            createPullPin(225, 230, 120, 15),       // PIN A: 水と溶岩を混ぜて落とす
+            createPullPin(150, 400, 150, 15, 0.5),  // PIN B: 敵へ流す
+            createPullPin(380, 100, 100, 15),       // PIN C: 金塊を落とす
         ];
 
-        const player = Bodies.rectangle(width/2, 720, 50, 80, { isStatic: true, label: 'player', render: { fillStyle: '#0984e3' } });
+        World.add(engine.world, [...worldObjects, ...pins, player, enemy, gold]);
 
-        World.add(engine.world, [...worldObjects, ...pins, player]);
-
-        // 液体投入（たっぷり）
-        for(let i=0; i<40; i++) {
-            World.add(engine.world, liquid(width/2 - 30 + Math.random()*60, 100, '#e74c3c', 'lava'));
-            World.add(engine.world, liquid(width/2 - 20 + Math.random()*40, 150, '#3498db', 'water'));
+        // 液体投入
+        for(let i=0; i<30; i++){
+            World.add(engine.world, liquid(180+Math.random()*20, 100, '#3498db', 'water'));
+            World.add(engine.world, liquid(270+Math.random()*20, 100, '#e74c3c', 'lava'));
         }
 
-        // --- インタラクション（引き抜きアニメーション） ---
-        let activePins = [...pins];
+        // --- インタラクション ---
+        let currentPins = [...pins];
         render.canvas.addEventListener('mousedown', (e) => {
             const rect = render.canvas.getBoundingClientRect();
             const mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-            const clicked = Matter.Query.point(activePins, mousePos);
+            const clicked = Matter.Query.point(currentPins, mousePos);
             
             if (clicked.length > 0) {
-                const targetPin = clicked[0];
-                // 「ススッ」と右にスライドして消えるアニメーション
+                const p = clicked[0];
                 const slide = () => {
-                    if (targetPin.position.x < width + 200) {
-                        Body.setPosition(targetPin, { x: targetPin.position.x + 15, y: targetPin.position.y });
+                    if (p.position.x < width + 200) {
+                        Body.setPosition(p, { x: p.position.x + 20, y: p.position.y });
                         requestAnimationFrame(slide);
                     } else {
-                        World.remove(engine.world, targetPin);
+                        World.remove(engine.world, p);
                     }
                 };
                 slide();
-                activePins = activePins.filter(p => p !== targetPin);
+                currentPins = currentPins.filter(item => item !== p);
             }
         });
 
-        // 衝突ロジック（水+溶岩=岩）
+        // --- 判定ロジック ---
         Events.on(engine, 'afterUpdate', () => {
             const all = Composite.allBodies(engine.world);
             const waters = all.filter(b => b.label === 'water');
@@ -97,12 +104,27 @@
             lavas.forEach(l => {
                 waters.forEach(w => {
                     if (Matter.Vector.magnitude(Matter.Vector.sub(l.position, w.position)) < 15) {
-                        World.add(engine.world, wall(l.position.x, l.position.y, 20, 20));
+                        World.add(engine.world, wall(l.position.x, l.position.y, 25, 25));
                         World.remove(engine.world, [l, w]);
                     }
                 });
+                if (Matter.Vector.magnitude(Matter.Vector.sub(l.position, enemy.position)) < 40) {
+                    World.remove(engine.world, enemy);
+                }
+                if (Matter.Vector.magnitude(Matter.Vector.sub(l.position, player.position)) < 40) {
+                    showMsg("FAILED!", "#e74c3c");
+                }
             });
+
+            if (Matter.Vector.magnitude(Matter.Vector.sub(gold.position, player.position)) < 50) {
+                showMsg("SUCCESS!", "#f1c40f");
+            }
         });
+
+        function showMsg(t, c) {
+            const m = document.getElementById('msg');
+            m.innerText = t; m.style.color = c; m.style.display = "block";
+        }
 
         Render.run(render);
         Runner.run(Runner.create(), engine);
